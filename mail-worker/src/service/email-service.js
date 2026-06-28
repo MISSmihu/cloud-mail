@@ -22,6 +22,7 @@ import domainUtils from '../utils/domain-uitls';
 import account from "../entity/account";
 import { att } from '../entity/att';
 import telegramService from './telegram-service';
+import emailContentService from './email-content-service';
 
 const emailService = {
 
@@ -144,9 +145,26 @@ const emailService = {
 			.run();
 	},
 
-	receive(c, params, cidAttList, r2domain) {
+	async receive(c, params, cidAttList, r2domain) {
+		const content = params.content;
+		const text = params.text;
+		const raw = params.raw;
 		params.content = this.imgReplace(params.content, cidAttList, r2domain)
-		return orm(c).insert(email).values({ ...params }).returning().get();
+		delete params.raw;
+		const emailRow = await orm(c).insert(email).values({
+			...params,
+			content: emailContentService.preview(params.content),
+			text: emailContentService.preview(text)
+		}).returning().get();
+		const keyUpdates = await emailContentService.save(c, emailRow.emailId, {
+			content: params.content || content,
+			text,
+			raw
+		});
+		if (Object.keys(keyUpdates).length > 0) {
+			return orm(c).update(email).set(keyUpdates).where(eq(email.emailId, emailRow.emailId)).returning().get();
+		}
+		return emailRow;
 	},
 
 	//邮件发送
@@ -308,8 +326,8 @@ const emailService = {
 		emailData.sendEmail = accountRow.email;
 		emailData.name = name;
 		emailData.subject = subject;
-		emailData.content = html;
-		emailData.text = text;
+		emailData.content = emailContentService.preview(html);
+		emailData.text = emailContentService.preview(text);
 		emailData.accountId = accountId;
 		emailData.status = useCloudflareEmail ? emailConst.status.DELIVERED : emailConst.status.SENT;
 		emailData.type = emailConst.type.SEND;
@@ -335,7 +353,11 @@ const emailService = {
 		}
 
 		//保存到数据库并返回结果
-		const emailResult = await orm(c).insert(email).values(emailData).returning().get();
+		let emailResult = await orm(c).insert(email).values(emailData).returning().get();
+		const keyUpdates = await emailContentService.save(c, emailResult.emailId, { content: html, text });
+		if (Object.keys(keyUpdates).length > 0) {
+			emailResult = await orm(c).update(email).set(keyUpdates).where(eq(email.emailId, emailResult.emailId)).returning().get();
+		}
 
 		//保存内嵌附件
 		if (imageDataList.length > 0) {
@@ -544,6 +566,7 @@ const emailService = {
 	async HandleOnSiteEmail(c, receiveEmail, sendEmailData, attList) {
 
 		const { noRecipient  } = await settingService.query(c);
+		const sourceEmail = await emailContentService.hydrate(c, { ...sendEmailData });
 
 		//查询所有收件人账号信息
 		let accountList = await orm(c).select().from(account).where(inArray(account.email, receiveEmail)).all();
@@ -564,6 +587,9 @@ const emailService = {
 			emailValues.toEmail = email;
 			emailValues.toName = emailUtils.getName(email);
 			emailValues.emailId = null;
+			emailValues.contentKey = '';
+			emailValues.textKey = '';
+			emailValues.rawKey = '';
 
 			const accountRow = accountList.find(accountRow => accountRow.email === email);
 
@@ -620,7 +646,14 @@ const emailService = {
 
 		for (const emailData of receiveEmailList) {
 
-			const emailRow = await orm(c).insert(email).values(emailData).returning().get();
+			let emailRow = await orm(c).insert(email).values(emailData).returning().get();
+			const keyUpdates = await emailContentService.save(c, emailRow.emailId, {
+				content: sourceEmail.content,
+				text: sourceEmail.text
+			});
+			if (Object.keys(keyUpdates).length > 0) {
+				emailRow = await orm(c).update(email).set(keyUpdates).where(eq(email.emailId, emailRow.emailId)).returning().get();
+			}
 
 			//设置附件保存
 			for (const attRow of attList) {
@@ -693,11 +726,37 @@ const emailService = {
 		return document.toString();
 	},
 
-	selectById(c, emailId) {
-		return orm(c).select().from(email).where(
+	async selectById(c, emailId) {
+		const emailRow = await orm(c).select().from(email).where(
 			and(eq(email.emailId, emailId),
 				eq(email.isDel, isDel.NORMAL)))
 			.get();
+		return emailContentService.hydrate(c, emailRow);
+	},
+
+	async detail(c, params, userId) {
+		const emailId = Number(params.emailId);
+		const emailRow = await orm(c).select().from(email).where(
+			and(
+				eq(email.emailId, emailId),
+				eq(email.userId, userId),
+				eq(email.isDel, isDel.NORMAL)
+			)
+		).get();
+		await emailContentService.hydrate(c, emailRow);
+		await this.emailAddAtt(c, emailRow ? [emailRow] : []);
+		return emailRow;
+	},
+
+	async allDetail(c, params) {
+		const emailId = Number(params.emailId);
+		const emailRow = await orm(c).select({...email, userEmail: user.email}).from(email)
+			.leftJoin(user, eq(email.userId, user.userId))
+			.where(eq(email.emailId, emailId))
+			.get();
+		await emailContentService.hydrate(c, emailRow);
+		await this.emailAddAtt(c, emailRow ? [emailRow] : []);
+		return emailRow;
 	},
 
 	async latest(c, params, userId) {
@@ -734,12 +793,16 @@ const emailService = {
 	async physicsDelete(c, params) {
 		let { emailIds } = params;
 		emailIds = emailIds.split(',').map(Number);
+		const emailRows = await orm(c).select({ contentKey: email.contentKey, textKey: email.textKey, rawKey: email.rawKey }).from(email).where(inArray(email.emailId, emailIds)).all();
+		await emailContentService.removeByRows(c, emailRows);
 		await attService.removeByEmailIds(c, emailIds);
 		await starService.removeByEmailIds(c, emailIds);
 		await orm(c).delete(email).where(inArray(email.emailId, emailIds)).run();
 	},
 
 	async physicsDeleteUserIds(c, userIds) {
+		const emailRows = await orm(c).select({ contentKey: email.contentKey, textKey: email.textKey, rawKey: email.rawKey }).from(email).where(inArray(email.userId, userIds)).all();
+		await emailContentService.removeByRows(c, emailRows);
 		await attService.removeByUserIds(c, userIds);
 		await orm(c).delete(email).where(inArray(email.userId, userIds)).run();
 	},
@@ -973,12 +1036,16 @@ const emailService = {
 			return;
 		}
 
+		const emailRows = await orm(c).select({ contentKey: email.contentKey, textKey: email.textKey, rawKey: email.rawKey }).from(email).where(inArray(email.emailId, emailIds)).all();
+		await emailContentService.removeByRows(c, emailRows);
 		await attService.removeByEmailIds(c, emailIds);
 
 		await orm(c).delete(email).where(conditions.length > 1 ? and(...conditions) : conditions[0]).run();
 	},
 
 	async physicsDeleteByAccountId(c, accountId) {
+		const emailRows = await orm(c).select({ contentKey: email.contentKey, textKey: email.textKey, rawKey: email.rawKey }).from(email).where(eq(email.accountId, accountId)).all();
+		await emailContentService.removeByRows(c, emailRows);
 		await attService.removeByAccountId(c, accountId);
 		await orm(c).delete(email).where(eq(email.accountId, accountId)).run();
 	},

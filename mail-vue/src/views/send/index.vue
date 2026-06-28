@@ -26,6 +26,7 @@ import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
 import emailScroll from "@/components/email-scroll/index.vue"
 import {emailList, emailDelete} from "@/request/email.js";
+import {loadEmailDetail} from '@/utils/email-detail.js';
 import {starAdd, starCancel} from "@/request/star.js";
 import {defineOptions, onMounted, reactive, ref, watch} from "vue";
 import router from "@/router/index.js";
@@ -55,9 +56,9 @@ function changeTimeSort() {
   sendScroll.value.refreshList();
 }
 
-function jumpContent(email) {
-  emailStore.contentData.email = email
-  emailStore.contentData.delType = 'logic'
+async function jumpContent(email) {
+	emailStore.contentData.email = await loadEmailDetail(email)
+	emailStore.contentData.delType = 'logic'
   emailStore.contentData.showStar = true
   emailStore.contentData.showReply = true
   router.push('/message')

@@ -105,6 +105,7 @@ import {toUtc} from "@/utils/day.js";
 import {sleep} from "@/utils/time-utils.js";
 import {useSettingStore} from "@/store/setting.js";
 import { useRoute } from 'vue-router'
+import {loadEmailDetail} from '@/utils/email-detail.js';
 
 defineOptions({
   name: 'all-email'
@@ -279,9 +280,9 @@ function typeSelectChange() {
   search()
 }
 
-function jumpContent(email) {
-  emailStore.contentData.email = email
-  emailStore.contentData.delType = 'physics'
+async function jumpContent(email) {
+	emailStore.contentData.email = await loadEmailDetail(email, true)
+	emailStore.contentData.delType = 'physics'
   emailStore.contentData.showStar = false
   emailStore.contentData.showReply = false
   router.push({name: 'content'})

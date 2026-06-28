@@ -143,6 +143,16 @@ const dbInit = {
 	async v2_3DB(c) {
 		try {
 			await c.env.db.batch([
+				c.env.db.prepare(`ALTER TABLE email ADD COLUMN content_key TEXT NOT NULL DEFAULT '';`),
+				c.env.db.prepare(`ALTER TABLE email ADD COLUMN text_key TEXT NOT NULL DEFAULT '';`),
+				c.env.db.prepare(`ALTER TABLE email ADD COLUMN raw_key TEXT NOT NULL DEFAULT '';`)
+			]);
+		} catch (e) {
+			console.warn(e);
+		}
+
+		try {
+			await c.env.db.batch([
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN force_path_style	INTEGER NOT NULL DEFAULT 1;`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN custom_domain TEXT NOT NULL DEFAULT '';`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN tg_msg_to TEXT NOT NULL DEFAULT 'show';`),

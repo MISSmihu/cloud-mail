@@ -103,6 +103,7 @@ export async function email(message, env, ctx) {
 			code,
 			content: email.html,
 			text: email.text,
+			raw: content,
 			cc: email.cc ? JSON.stringify(email.cc) : '[]',
 			bcc: email.bcc ? JSON.stringify(email.bcc) : '[]',
 			recipient: JSON.stringify(email.to),

@@ -34,6 +34,7 @@ import {sleep} from "@/utils/time-utils.js";
 import router from "@/router/index.js";
 import {Icon} from "@iconify/vue";
 import { useRoute } from 'vue-router'
+import {loadEmailDetail} from '@/utils/email-detail.js';
 
 defineOptions({
   name: 'email'
@@ -63,9 +64,9 @@ function changeTimeSort() {
   scroll.value.refreshList();
 }
 
-function jumpContent(email) {
-  emailStore.contentData.email = email
-  emailStore.contentData.delType = 'logic'
+async function jumpContent(email) {
+	emailStore.contentData.email = await loadEmailDetail(email)
+	emailStore.contentData.delType = 'logic'
   emailStore.contentData.showUnread = true
   emailStore.contentData.showStar = true
   emailStore.contentData.showReply = true

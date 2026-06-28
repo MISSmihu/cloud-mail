@@ -19,6 +19,7 @@ import {starAdd, starCancel, starList} from "@/request/star.js";
 import {useEmailStore} from "@/store/email.js";
 import {defineOptions, onMounted, ref} from "vue";
 import router from "@/router/index.js";
+import {loadEmailDetail} from '@/utils/email-detail.js';
 
 defineOptions({
   name: 'star'
@@ -27,9 +28,9 @@ defineOptions({
 const scroll = ref({})
 const emailStore = useEmailStore();
 
-function jumpContent(email) {
-  emailStore.contentData.email = email
-  emailStore.contentData.delType = 'logic'
+async function jumpContent(email) {
+	emailStore.contentData.email = await loadEmailDetail(email)
+	emailStore.contentData.delType = 'logic'
   emailStore.contentData.showStar = true
   emailStore.contentData.showReply = true
   router.push('/message')
