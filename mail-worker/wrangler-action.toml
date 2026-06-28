@@ -20,6 +20,7 @@ id = "${KV_NAMESPACE_ID}"
 
 [[r2_buckets]]
 binding = "r2"
+# GitHub Actions injects this from R2_BUCKET_NAME.
 bucket_name = "${R2_BUCKET_NAME}"
 
 [ai]
