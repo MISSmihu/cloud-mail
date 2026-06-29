@@ -148,21 +148,22 @@ const emailService = {
 	async receive(c, params, cidAttList, r2domain) {
 		const content = params.content;
 		const text = params.text;
-		const raw = params.raw;
 		params.content = this.imgReplace(params.content, cidAttList, r2domain)
-		delete params.raw;
 		const emailRow = await orm(c).insert(email).values({
 			...params,
 			content: emailContentService.preview(params.content),
 			text: emailContentService.preview(text)
 		}).returning().get();
-		const keyUpdates = await emailContentService.save(c, emailRow.emailId, {
-			content: params.content || content,
-			text,
-			raw
-		});
-		if (Object.keys(keyUpdates).length > 0) {
-			return orm(c).update(email).set(keyUpdates).where(eq(email.emailId, emailRow.emailId)).returning().get();
+		try {
+			const keyUpdates = await emailContentService.save(c, emailRow.emailId, {
+				content: params.content || content,
+				text
+			});
+			if (Object.keys(keyUpdates).length > 0) {
+				return orm(c).update(email).set(keyUpdates).where(eq(email.emailId, emailRow.emailId)).returning().get();
+			}
+		} catch (e) {
+			console.error('save email content to R2 failed', e);
 		}
 		return emailRow;
 	},
